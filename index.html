@@ -11,32 +11,39 @@
   <script src="http://ajax.googleapis.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
   <script type="text/javascript" src="http://www.google.com/jsapi"></script>
   <script type="text/javascript" src="http://ajax.aspnetcdn.com/ajax/knockout/knockout-3.0.0.js"></script>
+  <script type="text/javascript" src="http://cdn.jsdelivr.net/filesaver.js/0.1/FileSaver.min.js"></script>
 </head>
 <body>
 
 <div class="navbar navbar-inverse navbar-fixed-top" role="navigation">
   <div class="container">
     <div class="navbar-header">
-        <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-collapse">
-          <span class="sr-only">Toggle navigation</span>
-          <span class="icon-bar"></span>
-          <span class="icon-bar"></span>
-          <span class="icon-bar"></span>
-        </button>
-        <a class="navbar-brand" href="#">Google Search Comparer</a>
-        <form class="navbar-form navbar-left" role="search">
-          <div class="form-group">
-            <input type="text" class="form-control" placeholder="Left side" data-bind="value:keyword1, valueUpdate: 'afterkeydown', executeOnEnter: doSearch.bind(null, keyword1, lastKeyword1, results1)" />
-          </div>
-          <button type="submit" class="btn btn-default" data-bind="click: doSearch.bind(null, keyword1, lastKeyword1,results1)">left</button>
-        </form>
+      <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-collapse">
+        <span class="sr-only">Toggle navigation</span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="#">Google Search Comparer</a>
+    </div>
 
-        <form class="navbar-form navbar-right" role="search">
-          <div class="form-group">
-            <input type="text" class="form-control" placeholder="Right side" data-bind="value:keyword2, valueUpdate: 'afterkeydown', executeOnEnter: doSearch.bind(null, keyword2, lastKeyword2, results2)" />
-          </div>
-          <button type="submit" class="btn btn-default" data-bind="click: doSearch.bind(null, keyword2, lastKeyword2, results2)">right</button>
-        </form>
+    <form class="navbar-form navbar-left" role="search">
+      <div class="form-group">
+        <input type="text" class="form-control" placeholder="Left side" data-bind="value:keyword1, valueUpdate: 'afterkeydown', executeOnEnter: executeSearch.bind(null, keyword1, lastKeyword1, results1)" />
+      </div>
+      <button type="submit" class="btn btn-default" data-bind="click: executeSearch.bind(null, keyword1, lastKeyword1,results1)">left</button>
+    </form>
+
+    <form class="navbar-form navbar-left" role="search">
+      <div class="form-group">
+        <input type="text" class="form-control" placeholder="Right side" data-bind="value:keyword2, valueUpdate: 'afterkeydown', executeOnEnter: executeSearch.bind(null, keyword2, lastKeyword2, results2)" />
+      </div>
+      <button type="submit" class="btn btn-default" data-bind="click: executeSearch.bind(null, keyword2, lastKeyword2, results2)">right</button>
+    </form>
+
+    <div class="navbar-form navbar-right">
+      <button class="btn btn-success" data-bind="click: downloadCSV">Download with tabbed CSV</button>
+    </div>
     </div>
   </div>
 </div>
@@ -91,44 +98,85 @@
     function OnLoad()
     {
       webSearcher = new google.search.WebSearch();
-      webSearcher.setSearchCompleteCallback(null, searchComplete, [webSearcher]);
+      webSearcher.setSearchCompleteCallback(null, didFinishSearch, [webSearcher]);
       webSearcher.setResultSetSize(google.search.Search.LARGE_RESULTSET);
       webSearcher.setNoHtmlGeneration();
       webSearcher.setRestriction(google.search.Search.RESTRICT_EXTENDED_ARGS, {lr:'lang_ja'});
     }
 
-    // 検索実行
-    var doSearch = function(kw, lkw, rs){
-      console.log("doSearch");
+    // execute search request to google web search
+    var executeSearch = function(kw, lkw, rs){
+      console.log("executeSearch");
       targetResults = rs;
       rs.removeAll();
       lkw(kw());
       webSearcher.execute(kw());
     }
 
-    // 検索完了時の動作
-     var searchComplete = function(searcher){
-          console.log("searchComplete");
-          showSearchResults(searcher.results);
+    // when get response from google web search
+     var didFinishSearch = function(searcher){
+          console.log("didFinishSearch");
+          updateSearchResults(searcher.results);
           current = searcher.cursor;
           var currentPage = current.currentPageIndex;
           if( currentPage < current.pages.length - 1 ){
             var nextPage = currentPage + 1; 
             searcher.gotoPage( nextPage );
-            console.log(nextPage);
           }
-          console.log("end");
       }
 
-    // 検索後の結果表示
-    var showSearchResults = function(searchResults){
-      console.log("showSearchResults");
+    // set results to observable array
+    var updateSearchResults = function(searchResults){
+      console.log("updateSearchResults");
       if (searchResults && searchResults.length > 0) {
         for (var i = 0; i < searchResults.length; i++) {
           var result = searchResults[i];
           targetResults.push(result);
         }
       }
+    }
+
+    // download results data when push download button
+    var downloadCSV = function(item, event){
+        if (!window.Blob) { return false; }
+        var data = getDataForCSV()
+        var blob = new Blob([ data ], {
+            "type" : "text/plain"
+        });
+        window.URL = window.URL || window.webkitURL;  // Chrome, Safari
+
+        var fileURL = window.URL.createObjectURL(blob)
+        var xhr = new XMLHttpRequest()
+        xhr.open('GET', fileURL, true);
+        xhr.filename = '[seached] '+keyword1()+'_'+keyword2()+'.csv';
+        xhr.responseType = 'blob';
+        xhr.onload = function(){
+            saveAs(this.response, xhr.filename);
+        }
+        xhr.send(null);
+    }
+
+    // convert results to tabbed CSV(TSV) data
+    var getDataForCSV = function(){
+      var d1 = results1();
+      var d2 = results2();
+      var max = (d1.length  > d2.length) ? d1.length : d2.length;
+      var data = [];
+      for(var i = 0; i < max; i++){
+        var row = [];
+        if(d1.length > i){
+          row.push(d1[i].titleNoFormatting, d1[i].unescapedUrl, d1[i].content.replace(/\n/g, ''));
+        }else{
+          row.push('', '', '');
+        }
+        if(d2.length > i){
+          row.push(d2[i].titleNoFormatting, d2[i].unescapedUrl, d2[i].content.replace(/\n/g, ''));
+        }else{
+          row.push('', '', '');
+        }
+        data.push(row.join('\t'));
+      }
+      return data.join('\r\n');
     }
 
     // knockout ViewModel
@@ -141,7 +189,7 @@
       self.headers = ko.observableArray([]);
       self.headers.push('title');
       self.headers.push('content');
-      self.doSearch = doSearch;
+      self.executeSearch = executeSearch;
     }
 
     // extend knockout handler
@@ -159,7 +207,7 @@
       }
     };
 
-    // 実行
+    // run
     ko.applyBindings(new myViewModel());
     google.setOnLoadCallback(OnLoad);
 </script>
